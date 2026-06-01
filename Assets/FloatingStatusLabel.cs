@@ -9,6 +9,7 @@ public class FloatingStatusLabel : MonoBehaviour
     public Vector3 offset = new Vector3(0f, 2.8f, 0f);
     public Vector2 panelSize = new Vector2(150f, 54f);
     public bool tintRenderers = false;
+    public bool showLabel = true;
 
     private const string RootName = "Floating_Status_Label";
     private const string PanelName = "Status_Panel";
@@ -41,7 +42,20 @@ public class FloatingStatusLabel : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (!showLabel)
+        {
+            if (rootRect != null && rootRect.gameObject.activeSelf)
+            {
+                rootRect.gameObject.SetActive(false);
+            }
+            return;
+        }
+
         EnsureUi();
+        if (!rootRect.gameObject.activeSelf)
+        {
+            rootRect.gameObject.SetActive(true);
+        }
         rootRect.position = transform.position + offset;
         FaceCamera();
 
