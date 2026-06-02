@@ -7,14 +7,49 @@ using UnityEngine.UI;
 [ExecuteAlways]
 public class MachineSideStatusPanel : MonoBehaviour
 {
+    [Header("Identity")]
     public string resourceId = "";
     public string displayName = "";
+
+    [Header("Layout")]
     public Vector3 worldOffset = new Vector3(2.2f, 2.4f, 0f);
     public Vector2 panelSize = new Vector2(230f, 170f);
+    public float panelScale = 0.012f;
+    public bool faceCamera = true;
+
+    [Header("Display")]
+    public bool showMachineName = true;
+    public bool showAxisCoordinates = true;
+    public bool showProcessState = true;
+    public bool showFaultState = true;
+
+    [Header("Axis Simulation")]
     public bool simulateAxis = true;
     public float axisAmplitudeX = 120f;
     public float axisAmplitudeY = 60f;
     public float axisAmplitudeZ = 35f;
+
+    [Header("Style")]
+    public Color panelColor = new Color(0.045f, 0.052f, 0.06f, 0.9f);
+    public Sprite backgroundSprite;
+    public Color borderColor = new Color(0.1f, 0.85f, 0.9f, 0.75f);
+    public Sprite borderSprite;
+    public Vector2 borderInset = Vector2.zero;
+    public Font customFont;
+    public int titleFontSize = 22;
+    public int axisFontSize = 18;
+    public int stateFontSize = 18;
+    public Color titleTextColor = Color.white;
+    public Color axisTextColor = Color.white;
+    public Color stateTextColor = Color.white;
+    public Color idleProcessColor = new Color(0.55f, 0.55f, 0.55f, 1f);
+    public Color processingProcessColor = new Color(0.1f, 0.85f, 0.25f, 1f);
+    public Color normalFaultColor = new Color(0.1f, 0.85f, 0.25f, 1f);
+    public Color faultColor = new Color(0.95f, 0.12f, 0.08f, 1f);
+    public Color toolWearColor = new Color(1f, 0.72f, 0.08f, 1f);
+    public Vector2 statusBlockSize = new Vector2(16f, 16f);
+
+    [Header("Data")]
     public string playbackDirectory = "C:/Users/ywc/Desktop/codex/matlab_workshop_model/output/unity_export_v2/simevents_stateflow_finaltransport_4m1agv";
 
     private const string RootName = "Machine_Side_Status_Panel";
@@ -28,6 +63,8 @@ public class MachineSideStatusPanel : MonoBehaviour
     private Text zText;
     private Text processText;
     private Text faultText;
+    private Image backgroundImage;
+    private Image borderImage;
     private Image processBlock;
     private Image faultBlock;
     private Font uiFont;
@@ -127,30 +164,39 @@ public class MachineSideStatusPanel : MonoBehaviour
         }
 
         rootRect.sizeDelta = panelSize;
-        rootRect.localScale = Vector3.one * 0.012f;
+        rootRect.localScale = Vector3.one * panelScale;
 
-        Image background = EnsureComponent<Image>(rootRect.gameObject);
-        background.color = new Color(0.045f, 0.052f, 0.06f, 0.9f);
+        backgroundImage = EnsureComponent<Image>(rootRect.gameObject);
+        ApplyImageStyle(backgroundImage, panelColor, backgroundSprite);
+        EnsureBorder();
 
-        titleText = EnsureText("Title", displayName, 22, FontStyle.Bold, TextAnchor.MiddleLeft);
+        titleText = EnsureText("Title", displayName, titleFontSize, FontStyle.Bold, TextAnchor.MiddleLeft, titleTextColor);
         SetRect(titleText.rectTransform, new Vector2(12f, -12f), new Vector2(-12f, -42f));
+        titleText.gameObject.SetActive(showMachineName);
 
-        xText = EnsureText("Axis_X", "X: 0.000", 18, FontStyle.Bold, TextAnchor.MiddleLeft);
+        xText = EnsureText("Axis_X", "X: 0.000", axisFontSize, FontStyle.Bold, TextAnchor.MiddleLeft, axisTextColor);
         SetRect(xText.rectTransform, new Vector2(12f, -44f), new Vector2(-12f, -68f));
+        xText.gameObject.SetActive(showAxisCoordinates);
 
-        yText = EnsureText("Axis_Y", "Y: 0.000", 18, FontStyle.Bold, TextAnchor.MiddleLeft);
+        yText = EnsureText("Axis_Y", "Y: 0.000", axisFontSize, FontStyle.Bold, TextAnchor.MiddleLeft, axisTextColor);
         SetRect(yText.rectTransform, new Vector2(12f, -68f), new Vector2(-12f, -92f));
+        yText.gameObject.SetActive(showAxisCoordinates);
 
-        zText = EnsureText("Axis_Z", "Z: 0.000", 18, FontStyle.Bold, TextAnchor.MiddleLeft);
+        zText = EnsureText("Axis_Z", "Z: 0.000", axisFontSize, FontStyle.Bold, TextAnchor.MiddleLeft, axisTextColor);
         SetRect(zText.rectTransform, new Vector2(12f, -92f), new Vector2(-12f, -116f));
+        zText.gameObject.SetActive(showAxisCoordinates);
 
         processBlock = EnsureColorBlock("Process_Block", new Vector2(13f, -130f));
-        processText = EnsureText("Process_State", "\u52a0\u5de5\u72b6\u6001: \u7a7a\u95f2", 18, FontStyle.Normal, TextAnchor.MiddleLeft);
+        processBlock.gameObject.SetActive(showProcessState);
+        processText = EnsureText("Process_State", "\u52a0\u5de5\u72b6\u6001: \u7a7a\u95f2", stateFontSize, FontStyle.Normal, TextAnchor.MiddleLeft, stateTextColor);
         SetRect(processText.rectTransform, new Vector2(36f, -121f), new Vector2(-12f, -145f));
+        processText.gameObject.SetActive(showProcessState);
 
         faultBlock = EnsureColorBlock("Fault_Block", new Vector2(13f, -154f));
-        faultText = EnsureText("Fault_State", "\u6545\u969c\u72b6\u6001: \u6b63\u5e38", 18, FontStyle.Normal, TextAnchor.MiddleLeft);
+        faultBlock.gameObject.SetActive(showFaultState);
+        faultText = EnsureText("Fault_State", "\u6545\u969c\u72b6\u6001: \u6b63\u5e38", stateFontSize, FontStyle.Normal, TextAnchor.MiddleLeft, stateTextColor);
         SetRect(faultText.rectTransform, new Vector2(36f, -145f), new Vector2(-12f, -169f));
+        faultText.gameObject.SetActive(showFaultState);
     }
 
     private void RefreshText()
@@ -167,7 +213,7 @@ public class MachineSideStatusPanel : MonoBehaviour
         zText.text = string.Format(CultureInfo.InvariantCulture, "Z: {0,7:0.000}", axis.z);
         processText.text = "\u52a0\u5de5\u72b6\u6001: " + (processing ? "\u52a0\u5de5\u4e2d" : "\u7a7a\u95f2");
         faultText.text = "\u6545\u969c\u72b6\u6001: " + fault.label;
-        processBlock.color = processing ? new Color(0.1f, 0.85f, 0.25f, 1f) : new Color(0.55f, 0.55f, 0.55f, 1f);
+        processBlock.color = processing ? processingProcessColor : idleProcessColor;
         faultBlock.color = fault.color;
     }
 
@@ -197,13 +243,13 @@ public class MachineSideStatusPanel : MonoBehaviour
             {
                 if (item.type.Contains("tool") || item.effect.Contains("tool"))
                 {
-                    return new FaultInfo("\u5200\u5177\u78e8\u635f", new Color(1f, 0.72f, 0.08f, 1f));
+                    return new FaultInfo("\u5200\u5177\u78e8\u635f", toolWearColor);
                 }
-                return new FaultInfo("\u6545\u969c", new Color(0.95f, 0.12f, 0.08f, 1f));
+                return new FaultInfo("\u6545\u969c", faultColor);
             }
         }
 
-        return new FaultInfo("\u6b63\u5e38", new Color(0.1f, 0.85f, 0.25f, 1f));
+        return new FaultInfo("\u6b63\u5e38", normalFaultColor);
     }
 
     private void EnsureDisturbancesLoaded()
@@ -237,18 +283,18 @@ public class MachineSideStatusPanel : MonoBehaviour
         }
     }
 
-    private Text EnsureText(string objectName, string textValue, int fontSize, FontStyle style, TextAnchor alignment)
+    private Text EnsureText(string objectName, string textValue, int fontSize, FontStyle style, TextAnchor alignment, Color color)
     {
         Transform existing = rootRect.Find(objectName);
         GameObject textObject = existing != null ? existing.gameObject : new GameObject(objectName);
         textObject.transform.SetParent(rootRect, false);
         Text text = EnsureComponent<Text>(textObject);
-        text.font = uiFont;
+        text.font = customFont != null ? customFont : uiFont;
         text.text = textValue;
         text.fontSize = fontSize;
         text.fontStyle = style;
         text.alignment = alignment;
-        text.color = Color.white;
+        text.color = color;
         text.raycastTarget = false;
         text.horizontalOverflow = HorizontalWrapMode.Overflow;
         text.verticalOverflow = VerticalWrapMode.Truncate;
@@ -266,8 +312,36 @@ public class MachineSideStatusPanel : MonoBehaviour
         rect.anchorMax = new Vector2(0f, 1f);
         rect.pivot = new Vector2(0f, 1f);
         rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = new Vector2(16f, 16f);
+        rect.sizeDelta = statusBlockSize;
         return image;
+    }
+
+    private void EnsureBorder()
+    {
+        Transform existing = rootRect.Find("Panel_Border");
+        GameObject borderObject = existing != null ? existing.gameObject : new GameObject("Panel_Border");
+        borderObject.transform.SetParent(rootRect, false);
+        borderImage = EnsureComponent<Image>(borderObject);
+        borderImage.raycastTarget = false;
+        ApplyImageStyle(borderImage, borderColor, borderSprite);
+
+        RectTransform rect = borderImage.rectTransform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = borderInset;
+        rect.offsetMax = -borderInset;
+        rect.SetAsLastSibling();
+
+        borderObject.SetActive(borderSprite != null);
+    }
+
+    private static void ApplyImageStyle(Image image, Color color, Sprite sprite)
+    {
+        image.color = color;
+        image.sprite = sprite;
+        image.type = sprite != null ? Image.Type.Sliced : Image.Type.Simple;
+        image.preserveAspect = false;
+        image.raycastTarget = false;
     }
 
     private static void SetRect(RectTransform rect, Vector2 topLeft, Vector2 bottomRight)
@@ -281,6 +355,11 @@ public class MachineSideStatusPanel : MonoBehaviour
 
     private void FaceCamera()
     {
+        if (!faceCamera)
+        {
+            return;
+        }
+
         Camera targetCamera = Camera.main;
         if (targetCamera == null)
         {
