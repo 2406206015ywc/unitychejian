@@ -12,6 +12,7 @@ public class MachineSideStatusPanel : MonoBehaviour
     public string displayName = "";
 
     [Header("Layout")]
+    public bool useSceneAuthoredPanel = true;
     public Vector3 worldOffset = new Vector3(2.2f, 2.4f, 0f);
     public Vector2 panelSize = new Vector2(230f, 170f);
     public float panelScale = 0.012f;
@@ -70,6 +71,7 @@ public class MachineSideStatusPanel : MonoBehaviour
     private Font uiFont;
     private readonly List<DisturbanceWindow> disturbances = new List<DisturbanceWindow>();
     private bool disturbancesLoaded;
+    private bool missingScenePanelWarningLogged;
 
     private void Awake()
     {
@@ -96,6 +98,14 @@ public class MachineSideStatusPanel : MonoBehaviour
 
     public void RebuildPanel()
     {
+        if (useSceneAuthoredPanel)
+        {
+            rootRect = null;
+            BindScenePanel();
+            RefreshText();
+            return;
+        }
+
         Transform existing = transform.Find(RootName);
         if (existing != null)
         {
@@ -149,6 +159,55 @@ public class MachineSideStatusPanel : MonoBehaviour
             uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         }
 
+        if (useSceneAuthoredPanel && BindScenePanel())
+        {
+            return;
+        }
+
+        BuildGeneratedPanel();
+    }
+
+    private bool BindScenePanel()
+    {
+        Transform existing = transform.Find(RootName);
+        if (existing == null)
+        {
+            if (!missingScenePanelWarningLogged)
+            {
+                Debug.LogWarning("MachineSideStatusPanel could not find scene-authored panel '" + RootName + "' on " + gameObject.name + ". Falling back to generated panel.");
+                missingScenePanelWarningLogged = true;
+            }
+            BuildGeneratedPanel();
+            return true;
+        }
+
+        rootRect = existing.GetComponent<RectTransform>();
+        if (rootRect == null)
+        {
+            rootRect = existing.gameObject.AddComponent<RectTransform>();
+        }
+
+        Canvas canvas = EnsureComponent<Canvas>(existing.gameObject);
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.sortingOrder = 60;
+        EnsureComponent<CanvasScaler>(existing.gameObject).dynamicPixelsPerUnit = 20f;
+        EnsureComponent<GraphicRaycaster>(existing.gameObject);
+
+        backgroundImage = existing.GetComponent<Image>();
+        titleText = FindText("Title");
+        xText = FindText("Axis_X");
+        yText = FindText("Axis_Y");
+        zText = FindText("Axis_Z");
+        processText = FindText("Process_State");
+        faultText = FindText("Fault_State");
+        processBlock = FindImage("Process_Block");
+        faultBlock = FindImage("Fault_Block");
+        borderImage = FindImage("Panel_Border");
+        return true;
+    }
+
+    private void BuildGeneratedPanel()
+    {
         if (rootRect == null)
         {
             Transform existing = transform.Find(RootName);
@@ -207,14 +266,38 @@ public class MachineSideStatusPanel : MonoBehaviour
         Vector3 axis = CalculateAxis(time, processing);
         FaultInfo fault = ResolveFault(time);
 
-        titleText.text = string.IsNullOrWhiteSpace(displayName) ? resourceId : displayName;
-        xText.text = string.Format(CultureInfo.InvariantCulture, "X: {0,7:0.000}", axis.x);
-        yText.text = string.Format(CultureInfo.InvariantCulture, "Y: {0,7:0.000}", axis.y);
-        zText.text = string.Format(CultureInfo.InvariantCulture, "Z: {0,7:0.000}", axis.z);
-        processText.text = "\u52a0\u5de5\u72b6\u6001: " + (processing ? "\u52a0\u5de5\u4e2d" : "\u7a7a\u95f2");
-        faultText.text = "\u6545\u969c\u72b6\u6001: " + fault.label;
-        processBlock.color = processing ? processingProcessColor : idleProcessColor;
-        faultBlock.color = fault.color;
+        if (titleText != null)
+        {
+            titleText.text = string.IsNullOrWhiteSpace(displayName) ? resourceId : displayName;
+        }
+        if (xText != null)
+        {
+            xText.text = string.Format(CultureInfo.InvariantCulture, "X: {0,7:0.000}", axis.x);
+        }
+        if (yText != null)
+        {
+            yText.text = string.Format(CultureInfo.InvariantCulture, "Y: {0,7:0.000}", axis.y);
+        }
+        if (zText != null)
+        {
+            zText.text = string.Format(CultureInfo.InvariantCulture, "Z: {0,7:0.000}", axis.z);
+        }
+        if (processText != null)
+        {
+            processText.text = "\u52a0\u5de5\u72b6\u6001: " + (processing ? "\u52a0\u5de5\u4e2d" : "\u7a7a\u95f2");
+        }
+        if (faultText != null)
+        {
+            faultText.text = "\u6545\u969c\u72b6\u6001: " + fault.label;
+        }
+        if (processBlock != null)
+        {
+            processBlock.color = processing ? processingProcessColor : idleProcessColor;
+        }
+        if (faultBlock != null)
+        {
+            faultBlock.color = fault.color;
+        }
     }
 
     private Vector3 CalculateAxis(float time, bool processing)
@@ -314,6 +397,28 @@ public class MachineSideStatusPanel : MonoBehaviour
         rect.anchoredPosition = anchoredPosition;
         rect.sizeDelta = statusBlockSize;
         return image;
+    }
+
+    private Text FindText(string objectName)
+    {
+        if (rootRect == null)
+        {
+            return null;
+        }
+
+        Transform existing = rootRect.Find(objectName);
+        return existing != null ? existing.GetComponent<Text>() : null;
+    }
+
+    private Image FindImage(string objectName)
+    {
+        if (rootRect == null)
+        {
+            return null;
+        }
+
+        Transform existing = rootRect.Find(objectName);
+        return existing != null ? existing.GetComponent<Image>() : null;
     }
 
     private void EnsureBorder()
