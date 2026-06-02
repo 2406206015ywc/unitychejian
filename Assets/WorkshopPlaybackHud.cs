@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -8,9 +9,11 @@ public class WorkshopPlaybackHud : MonoBehaviour
 {
     public MatlabPlaybackController controller;
     public bool rebuildOnAwake = true;
+    public Sprite playbackBackgroundSprite;
+    public Texture2D playbackBorderTexture;
 
     private static readonly Color BarColor = new Color(0.045f, 0.052f, 0.06f, 0.94f);
-    private static readonly Color SectionColor = new Color(0.09f, 0.105f, 0.12f, 0.96f);
+    private static readonly Color SectionColor = new Color(0.04f, 0.052f, 0.058f, 0.82f);
     private static readonly Color ButtonColor = new Color(0.08f, 0.37f, 0.82f, 1f);
     private static readonly Color SecondaryButtonColor = new Color(0.16f, 0.18f, 0.2f, 1f);
     private static readonly Color WarningColor = new Color(1f, 0.58f, 0.18f, 1f);
@@ -18,6 +21,8 @@ public class WorkshopPlaybackHud : MonoBehaviour
     private static readonly Color ProcessingColor = new Color(1f, 0.78f, 0.2f, 1f);
     private static readonly Color FinishedColor = new Color(0.28f, 0.82f, 0.42f, 1f);
     private static readonly Color MutedTextColor = new Color(0.72f, 0.78f, 0.82f, 1f);
+    private const string HudBackgroundRelativePath = "\u6750\u8d28/\u80cc\u666f.png";
+    private const string HudBorderRelativePath = "\u6750\u8d28/\u8fb9\u6846.jpg";
 
     private Canvas canvas;
     private Font uiFont;
@@ -44,6 +49,7 @@ public class WorkshopPlaybackHud : MonoBehaviour
         ConfigureCanvas();
 
         GameObject bar = CreatePanel("Playback_Bottom_Bar", transform, BarColor);
+        ApplyPlaybackBackground(bar.GetComponent<Image>());
         RectTransform barRect = bar.GetComponent<RectTransform>();
         barRect.anchorMin = new Vector2(0f, 0f);
         barRect.anchorMax = new Vector2(1f, 0f);
@@ -51,12 +57,13 @@ public class WorkshopPlaybackHud : MonoBehaviour
         barRect.anchoredPosition = new Vector2(0f, 12f);
         barRect.sizeDelta = new Vector2(-32f, 112f);
 
-        HorizontalLayoutGroup layout = AddHorizontalLayout(bar, 8f, new RectOffset(8, 8, 8, 8));
+        HorizontalLayoutGroup layout = AddHorizontalLayout(bar, 8f, new RectOffset(14, 14, 12, 12));
         layout.childForceExpandWidth = false;
 
         BuildCompactStatusPanel(bar.transform);
         BuildCompactControlPanel(bar.transform);
         BuildCompactOrderPanel(bar.transform);
+        AddPlaybackBorder(bar.transform);
 
         Refresh();
     }
@@ -532,6 +539,200 @@ public class WorkshopPlaybackHud : MonoBehaviour
         Image image = panel.AddComponent<Image>();
         image.color = color;
         return panel;
+    }
+
+    private void ApplyPlaybackBackground(Image target)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        Sprite sprite = playbackBackgroundSprite != null ? playbackBackgroundSprite : LoadSpriteFromAssets(HudBackgroundRelativePath, Vector4.zero);
+        if (sprite == null)
+        {
+            target.color = BarColor;
+            return;
+        }
+
+        target.sprite = sprite;
+        target.type = Image.Type.Simple;
+        target.preserveAspect = false;
+        target.color = Color.white;
+    }
+
+    private void AddPlaybackBorder(Transform parent)
+    {
+        Texture2D source = playbackBorderTexture != null ? playbackBorderTexture : LoadTextureFromAssets(HudBorderRelativePath);
+        Sprite sprite = CreateTransparentBorderSprite(source);
+        if (sprite == null)
+        {
+            return;
+        }
+
+        GameObject border = new GameObject("Playback_Outer_Border");
+        border.transform.SetParent(parent, false);
+        LayoutElement layout = border.AddComponent<LayoutElement>();
+        layout.ignoreLayout = true;
+
+        Image borderImage = border.AddComponent<Image>();
+        borderImage.sprite = sprite;
+        borderImage.type = Image.Type.Sliced;
+        borderImage.color = Color.white;
+        borderImage.raycastTarget = false;
+
+        RectTransform rect = border.GetComponent<RectTransform>();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+    }
+
+    private static Sprite LoadSpriteFromAssets(string relativePath, Vector4 border)
+    {
+        Texture2D texture = LoadTextureFromAssets(relativePath);
+        if (texture == null)
+        {
+            return null;
+        }
+
+        return Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f, 0u, SpriteMeshType.FullRect, border);
+    }
+
+    private static Texture2D LoadTextureFromAssets(string relativePath)
+    {
+        string path = Path.Combine(Application.dataPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        byte[] bytes = File.ReadAllBytes(path);
+        Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+        if (!texture.LoadImage(bytes))
+        {
+            Object.Destroy(texture);
+            return null;
+        }
+
+        texture.wrapMode = TextureWrapMode.Clamp;
+        texture.filterMode = FilterMode.Bilinear;
+        return texture;
+    }
+
+    private static Sprite CreateTransparentBorderSprite(Texture2D source)
+    {
+        if (source == null)
+        {
+            return null;
+        }
+
+        Color32[] sourcePixels = source.GetPixels32();
+        int minX = source.width;
+        int minY = source.height;
+        int maxX = -1;
+        int maxY = -1;
+
+        for (int y = 0; y < source.height; y++)
+        {
+            for (int x = 0; x < source.width; x++)
+            {
+                int index = y * source.width + x;
+                Color32 pixel = sourcePixels[index];
+                bool transparent = IsNearlyWhite(pixel);
+                pixel.a = transparent ? (byte)0 : (byte)255;
+                sourcePixels[index] = pixel;
+
+                if (!transparent)
+                {
+                    minX = Mathf.Min(minX, x);
+                    minY = Mathf.Min(minY, y);
+                    maxX = Mathf.Max(maxX, x);
+                    maxY = Mathf.Max(maxY, y);
+                }
+            }
+        }
+
+        if (maxX < minX || maxY < minY)
+        {
+            return null;
+        }
+
+        int width = maxX - minX + 1;
+        int height = maxY - minY + 1;
+        Color32[] croppedPixels = new Color32[width * height];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                croppedPixels[y * width + x] = sourcePixels[(y + minY) * source.width + x + minX];
+            }
+        }
+
+        Texture2D cropped = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        cropped.SetPixels32(croppedPixels);
+        cropped.Apply();
+        cropped.wrapMode = TextureWrapMode.Clamp;
+        cropped.filterMode = FilterMode.Bilinear;
+
+        Vector4 border = DetectSpriteBorder(croppedPixels, width, height);
+        return Sprite.Create(cropped, new Rect(0f, 0f, width, height), new Vector2(0.5f, 0.5f), 100f, 0u, SpriteMeshType.FullRect, border);
+    }
+
+    private static bool IsNearlyWhite(Color32 pixel)
+    {
+        return pixel.r > 230 && pixel.g > 230 && pixel.b > 230;
+    }
+
+    private static Vector4 DetectSpriteBorder(Color32[] pixels, int width, int height)
+    {
+        int centerY = height / 2;
+        int centerX = width / 2;
+        int left = FindFirstTransparentX(pixels, width, centerY, 1, width / 2, 1);
+        int rightTransparent = FindFirstTransparentX(pixels, width, centerY, width - 2, width / 2, -1);
+        int bottom = FindFirstTransparentY(pixels, width, centerX, 1, height / 2, 1);
+        int topTransparent = FindFirstTransparentY(pixels, width, centerX, height - 2, height / 2, -1);
+
+        if (left < 1)
+        {
+            left = Mathf.RoundToInt(width * 0.12f);
+        }
+        int right = rightTransparent > 0 ? width - rightTransparent - 1 : Mathf.RoundToInt(width * 0.12f);
+        if (bottom < 1)
+        {
+            bottom = Mathf.RoundToInt(height * 0.12f);
+        }
+        int top = topTransparent > 0 ? height - topTransparent - 1 : Mathf.RoundToInt(height * 0.12f);
+
+        left = Mathf.Clamp(left, 1, width / 2);
+        right = Mathf.Clamp(right, 1, width / 2);
+        bottom = Mathf.Clamp(bottom, 1, height / 2);
+        top = Mathf.Clamp(top, 1, height / 2);
+        return new Vector4(left, bottom, right, top);
+    }
+
+    private static int FindFirstTransparentX(Color32[] pixels, int width, int y, int start, int end, int step)
+    {
+        for (int x = start; step > 0 ? x < end : x > end; x += step)
+        {
+            if (pixels[y * width + x].a == 0)
+            {
+                return x;
+            }
+        }
+        return -1;
+    }
+
+    private static int FindFirstTransparentY(Color32[] pixels, int width, int x, int start, int end, int step)
+    {
+        for (int y = start; step > 0 ? y < end : y > end; y += step)
+        {
+            if (pixels[y * width + x].a == 0)
+            {
+                return y;
+            }
+        }
+        return -1;
     }
 
     private HorizontalLayoutGroup AddHorizontalLayout(GameObject target, float spacing, RectOffset padding)
