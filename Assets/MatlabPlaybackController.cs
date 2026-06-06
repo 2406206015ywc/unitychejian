@@ -149,6 +149,76 @@ public class MatlabPlaybackController : MonoBehaviour
         return disturbanceEventManager != null ? disturbanceEventManager.ActiveEventCount : 0;
     }
 
+    public string GetCurrentResourceState(string resourceId)
+    {
+        if (string.IsNullOrWhiteSpace(resourceId))
+        {
+            return "";
+        }
+
+        string state = FindResourceState(resourceId, playbackTime);
+        if (!string.IsNullOrWhiteSpace(state))
+        {
+            return state;
+        }
+
+        WorkshopResourceIdentity identity;
+        if (resourcesById.TryGetValue(resourceId, out identity) && identity != null)
+        {
+            return identity.initialState;
+        }
+
+        return "";
+    }
+
+    public bool TryGetCurrentAgvTask(out AgvTaskInfo task)
+    {
+        AgvMotionRow active = FindActiveAgvMotion(playbackTime);
+        if (active == null)
+        {
+            task = null;
+            return false;
+        }
+
+        string partId = orderVisualManager != null ? orderVisualManager.GetPartId(active.orderId) : "";
+        float progress = Mathf.Clamp01((playbackTime - active.startTime) / Mathf.Max(0.0001f, active.duration));
+        task = new AgvTaskInfo(active.taskId, active.agvId, active.orderId, partId, active.fromNode, active.toNode, active.startTime, active.endTime, progress);
+        return true;
+    }
+
+    public AgvTaskInfo GetLastOrCurrentAgvTask()
+    {
+        AgvMotionRow selected = FindActiveAgvMotion(playbackTime);
+        if (selected == null)
+        {
+            foreach (AgvMotionRow row in agvMotions)
+            {
+                if (row.agvId != agvObjectName)
+                {
+                    continue;
+                }
+
+                if (playbackTime >= row.endTime)
+                {
+                    selected = row;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        if (selected == null)
+        {
+            return null;
+        }
+
+        string partId = orderVisualManager != null ? orderVisualManager.GetPartId(selected.orderId) : "";
+        float progress = playbackTime >= selected.endTime ? 1f : Mathf.Clamp01((playbackTime - selected.startTime) / Mathf.Max(0.0001f, selected.duration));
+        return new AgvTaskInfo(selected.taskId, selected.agvId, selected.orderId, partId, selected.fromNode, selected.toNode, selected.startTime, selected.endTime, progress);
+    }
+
     public void ApplyPlaybackTime(float time)
     {
         ApplyAgvMotion(time);
@@ -295,6 +365,24 @@ public class MatlabPlaybackController : MonoBehaviour
         {
             agvObject.transform.position = ResolveNodePosition(firstFuture.fromNode, firstFuture.fromPosition);
         }
+    }
+
+    private AgvMotionRow FindActiveAgvMotion(float time)
+    {
+        foreach (AgvMotionRow row in agvMotions)
+        {
+            if (row.agvId != agvObjectName)
+            {
+                continue;
+            }
+
+            if (time >= row.startTime && time <= row.endTime)
+            {
+                return row;
+            }
+        }
+
+        return null;
     }
 
     private void ApplyResourceStates(float time)
@@ -616,5 +704,31 @@ public class MatlabPlaybackController : MonoBehaviour
         public string state;
         public float startTime;
         public float endTime;
+    }
+
+    public class AgvTaskInfo
+    {
+        public readonly string taskId;
+        public readonly string agvId;
+        public readonly string orderId;
+        public readonly string partId;
+        public readonly string fromNode;
+        public readonly string toNode;
+        public readonly float startTime;
+        public readonly float endTime;
+        public readonly float progress;
+
+        public AgvTaskInfo(string taskId, string agvId, string orderId, string partId, string fromNode, string toNode, float startTime, float endTime, float progress)
+        {
+            this.taskId = taskId;
+            this.agvId = agvId;
+            this.orderId = orderId;
+            this.partId = partId;
+            this.fromNode = fromNode;
+            this.toNode = toNode;
+            this.startTime = startTime;
+            this.endTime = endTime;
+            this.progress = progress;
+        }
     }
 }

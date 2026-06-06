@@ -118,6 +118,29 @@ public class DisturbanceEventManager : MonoBehaviour
         }
     }
 
+    public string GetCurrentDisturbanceForTarget(string targetId, float time)
+    {
+        if (!hasLoaded)
+        {
+            LoadDisturbances();
+        }
+
+        if (string.IsNullOrWhiteSpace(targetId))
+        {
+            return "";
+        }
+
+        foreach (DisturbanceRow disturbance in disturbances)
+        {
+            if (disturbance.targetId == targetId && IsActive(disturbance, time))
+            {
+                return TranslateType(disturbance.disturbanceType);
+            }
+        }
+
+        return "";
+    }
+
     private void Awake()
     {
         CacheSceneObjects();
@@ -294,7 +317,7 @@ public class DisturbanceEventManager : MonoBehaviour
         return summary;
     }
 
-    private static string TranslateType(string disturbanceType)
+    public static string TranslateType(string disturbanceType)
     {
         switch (disturbanceType)
         {

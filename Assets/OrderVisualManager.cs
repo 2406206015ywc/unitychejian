@@ -22,6 +22,7 @@ public class OrderVisualManager : MonoBehaviour
     private readonly Dictionary<string, Transform> nodesById = new Dictionary<string, Transform>();
     private readonly Dictionary<string, Transform> machinesById = new Dictionary<string, Transform>();
     private readonly Dictionary<string, string> partIdByOrderId = new Dictionary<string, string>();
+    private readonly Dictionary<string, int> operationCountByOrderId = new Dictionary<string, int>();
     private readonly List<ProcessingOrderInfo> currentProcessingOrders = new List<ProcessingOrderInfo>();
 
     private Transform agvTransform;
@@ -37,6 +38,67 @@ public class OrderVisualManager : MonoBehaviour
     public List<ProcessingOrderInfo> CurrentProcessingOrders
     {
         get { return currentProcessingOrders; }
+    }
+
+    public string GetPartId(string orderId)
+    {
+        string partId;
+        return !string.IsNullOrWhiteSpace(orderId) && partIdByOrderId.TryGetValue(orderId, out partId) ? partId : "";
+    }
+
+    public bool TryGetProcessingTaskForMachine(string machineId, out OrderTaskInfo task)
+    {
+        EnsureLoadedForQueries();
+        foreach (ProcessingOrderInfo item in currentProcessingOrders)
+        {
+            if (item.machineId == machineId)
+            {
+                int operationCount;
+                operationCountByOrderId.TryGetValue(item.orderId, out operationCount);
+                task = new OrderTaskInfo(
+                    item.orderId,
+                    item.partId,
+                    "Processing",
+                    item.machineId,
+                    item.operationStep,
+                    Mathf.Max(item.operationStep, operationCount),
+                    item.startTime,
+                    item.endTime);
+                return true;
+            }
+        }
+
+        task = null;
+        return false;
+    }
+
+    public List<OrderTaskInfo> GetCurrentOrderTasks(float time)
+    {
+        EnsureLoadedForQueries();
+        List<OrderTaskInfo> result = new List<OrderTaskInfo>();
+        foreach (KeyValuePair<string, string> pair in partIdByOrderId)
+        {
+            OrderStateRow active = FindActiveState(pair.Key, time);
+            if (active == null)
+            {
+                continue;
+            }
+
+            int operationCount;
+            operationCountByOrderId.TryGetValue(active.orderId, out operationCount);
+            result.Add(new OrderTaskInfo(
+                active.orderId,
+                active.partId,
+                active.state,
+                active.location,
+                active.operationStep,
+                Mathf.Max(active.operationStep, operationCount),
+                active.startTime,
+                active.endTime));
+        }
+
+        result.Sort((a, b) => string.CompareOrdinal(a.orderId, b.orderId));
+        return result;
     }
 
     public void LoadOrderTimeline()
@@ -166,6 +228,7 @@ public class OrderVisualManager : MonoBehaviour
     private void AssignOperationSteps()
     {
         Dictionary<string, int> stepByOrderId = new Dictionary<string, int>();
+        operationCountByOrderId.Clear();
         foreach (OrderStateRow row in orderStates)
         {
             if (row.state != "Processing")
@@ -181,6 +244,15 @@ public class OrderVisualManager : MonoBehaviour
 
             row.operationStep = nextStep;
             stepByOrderId[row.orderId] = nextStep + 1;
+            operationCountByOrderId[row.orderId] = nextStep;
+        }
+    }
+
+    private void EnsureLoadedForQueries()
+    {
+        if (!hasLoaded)
+        {
+            LoadOrderTimeline();
         }
     }
 
@@ -517,6 +589,30 @@ public class OrderVisualManager : MonoBehaviour
             this.machineId = machineId;
             this.operationStep = operationStep;
             this.remainingTime = remainingTime;
+            this.startTime = startTime;
+            this.endTime = endTime;
+        }
+    }
+
+    public class OrderTaskInfo
+    {
+        public readonly string orderId;
+        public readonly string partId;
+        public readonly string state;
+        public readonly string location;
+        public readonly int operationStep;
+        public readonly int operationCount;
+        public readonly float startTime;
+        public readonly float endTime;
+
+        public OrderTaskInfo(string orderId, string partId, string state, string location, int operationStep, int operationCount, float startTime, float endTime)
+        {
+            this.orderId = orderId;
+            this.partId = partId;
+            this.state = state;
+            this.location = location;
+            this.operationStep = operationStep;
+            this.operationCount = operationCount;
             this.startTime = startTime;
             this.endTime = endTime;
         }
