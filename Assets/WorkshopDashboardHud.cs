@@ -159,7 +159,7 @@ public class WorkshopDashboardHud : MonoBehaviour
         orderSummaryText.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1f;
 
         GameObject orders = CreateDashboardModule("Module_Current_Orders", panel.transform, 270f);
-        CreateModuleTitle(orders.transform, "\u5f53\u524d\u8ba2\u5355");
+        CreateModuleTitle(orders.transform, "\u8ba2\u5355\u6982\u89c8");
         currentOrdersText = CreateText("Current_Orders", orders.transform, "", 14, FontStyle.Normal, TextAnchor.UpperLeft, mutedTextColor);
         currentOrdersText.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1f;
 
@@ -284,7 +284,7 @@ public class WorkshopDashboardHud : MonoBehaviour
         }
 
         List<string> lines = new List<string>();
-        for (int i = 0; i < tasks.Count && i < 4; i++)
+        for (int i = 0; i < tasks.Count; i++)
         {
             lines.Add(FormatOrderTaskLine(tasks[i]));
         }
@@ -453,6 +453,14 @@ public class WorkshopDashboardHud : MonoBehaviour
         if (task.state == "Finished")
         {
             return FormatEmpty(task.orderId) + " \u5df2\u5b8c\u6210";
+        }
+        if (task.state == "Canceled")
+        {
+            return FormatEmpty(task.orderId) + " \u5df2\u53d6\u6d88";
+        }
+        if (task.state == "Unreleased")
+        {
+            return FormatEmpty(task.orderId) + " \u672a\u91ca\u653e";
         }
         if (task.state == "Released")
         {

@@ -80,6 +80,21 @@ public class OrderVisualManager : MonoBehaviour
             OrderStateRow active = FindActiveState(pair.Key, time);
             if (active == null)
             {
+                OrderStateRow first = FindFirstState(pair.Key);
+                if (first != null)
+                {
+                    int futureOperationCount;
+                    operationCountByOrderId.TryGetValue(first.orderId, out futureOperationCount);
+                    result.Add(new OrderTaskInfo(
+                        first.orderId,
+                        first.partId,
+                        "Unreleased",
+                        first.location,
+                        0,
+                        Mathf.Max(1, futureOperationCount),
+                        first.startTime,
+                        first.startTime));
+                }
                 continue;
             }
 
@@ -441,6 +456,25 @@ public class OrderVisualManager : MonoBehaviour
         }
 
         return fallback;
+    }
+
+    private OrderStateRow FindFirstState(string orderId)
+    {
+        OrderStateRow first = null;
+        foreach (OrderStateRow row in orderStates)
+        {
+            if (row.orderId != orderId)
+            {
+                continue;
+            }
+
+            if (first == null || row.startTime < first.startTime)
+            {
+                first = row;
+            }
+        }
+
+        return first;
     }
 
     private int TakeSlot(Dictionary<string, int> slots, string key)
