@@ -1,0 +1,64 @@
+{
+  "schema_version": "unity_playback_v2",
+  "scenario_name": "simevents_stateflow_finaltransport_4m1agv",
+  "time_unit": "simulation_time",
+  "coordinate_system": "Unity_XYZ",
+  "nodes": [
+    {
+      "node_id": "Source",
+      "display_name": "Source",
+      "node_type": "source",
+      "x": -3,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "node_id": "Raw",
+      "display_name": "Raw Material",
+      "node_type": "buffer",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "node_id": "M1",
+      "display_name": "Machine 1",
+      "node_type": "machine",
+      "x": 3,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "node_id": "M2",
+      "display_name": "Machine 2",
+      "node_type": "machine",
+      "x": 6,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "node_id": "M3",
+      "display_name": "Machine 3",
+      "node_type": "machine",
+      "x": 3,
+      "y": 0,
+      "z": 4
+    },
+    {
+      "node_id": "M4",
+      "display_name": "Machine 4",
+      "node_type": "machine",
+      "x": 6,
+      "y": 0,
+      "z": 4
+    },
+    {
+      "node_id": "Finished",
+      "display_name": "Finished Goods",
+      "node_type": "buffer",
+      "x": 9,
+      "y": 0,
+      "z": 2
+    }
+  ]
+}

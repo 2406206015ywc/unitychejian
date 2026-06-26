@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -51,7 +50,7 @@ public class MachineSideStatusPanel : MonoBehaviour
     public Vector2 statusBlockSize = new Vector2(16f, 16f);
 
     [Header("Data")]
-    public string playbackDirectory = "C:/Users/ywc/Desktop/codex/matlab_workshop_model/output/unity_export_v2/simevents_stateflow_finaltransport_4m1agv";
+    public string playbackDirectory = PlaybackDataLoader.DefaultMatlabPlaybackFolder;
 
     private const string RootName = "Machine_Side_Status_Panel";
 
@@ -156,7 +155,7 @@ public class MachineSideStatusPanel : MonoBehaviour
     {
         if (uiFont == null)
         {
-            uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            uiFont = WorkshopFontProvider.GetFont();
         }
 
         if (useSceneAuthoredPanel && BindScenePanel())
@@ -203,6 +202,7 @@ public class MachineSideStatusPanel : MonoBehaviour
         processBlock = FindImage("Process_Block");
         faultBlock = FindImage("Fault_Block");
         borderImage = FindImage("Panel_Border");
+        WorkshopFontProvider.ApplyToChildren(existing);
         return true;
     }
 
@@ -316,6 +316,20 @@ public class MachineSideStatusPanel : MonoBehaviour
 
     private FaultInfo ResolveFault(float time)
     {
+        if (playbackController != null && playbackController.disturbanceEventManager != null)
+        {
+            string currentDisturbance = playbackController.disturbanceEventManager.GetCurrentDisturbanceForTarget(resourceId, time);
+            if (!string.IsNullOrWhiteSpace(currentDisturbance))
+            {
+                if (currentDisturbance.Contains("\u5200\u5177"))
+                {
+                    return new FaultInfo("\u5200\u5177\u78e8\u635f", toolWearColor);
+                }
+
+                return new FaultInfo(currentDisturbance == "\u673a\u5e8a\u6062\u590d" ? "\u6b63\u5e38" : "\u6545\u969c", currentDisturbance == "\u673a\u5e8a\u6062\u590d" ? normalFaultColor : faultColor);
+            }
+        }
+
         foreach (DisturbanceWindow item in disturbances)
         {
             if (item.targetId != resourceId)
@@ -344,20 +358,22 @@ public class MachineSideStatusPanel : MonoBehaviour
 
         disturbancesLoaded = true;
         disturbances.Clear();
-        string path = Path.Combine(playbackDirectory, "disturbance_markers.csv");
-        if (!File.Exists(path))
+        string[] lines;
+        string error;
+        string root = PlaybackDataLoader.ResolvePlaybackRoot(playbackDirectory);
+        if (!PlaybackDataLoader.TryReadAllLines(root, "disturbance_markers.csv", out lines, out error))
         {
             return;
         }
 
-        foreach (Dictionary<string, string> row in ReadCsv(path))
+        foreach (Dictionary<string, string> row in PlaybackDataLoader.ReadCsv(lines))
         {
             DisturbanceWindow item = new DisturbanceWindow();
-            item.targetId = Get(row, "target_id");
-            item.type = Get(row, "disturbance_type");
-            item.effect = Get(row, "effect");
-            item.startTime = GetFloat(row, "start_time");
-            item.endTime = GetFloat(row, "end_time");
+            item.targetId = PlaybackDataLoader.Get(row, "target_id");
+            item.type = PlaybackDataLoader.Get(row, "disturbance_type");
+            item.effect = PlaybackDataLoader.Get(row, "effect");
+            item.startTime = PlaybackDataLoader.GetFloat(row, "start_time");
+            item.endTime = PlaybackDataLoader.GetFloat(row, "end_time");
             if (item.endTime <= item.startTime)
             {
                 item.endTime = item.startTime + 5f;
@@ -486,70 +502,6 @@ public class MachineSideStatusPanel : MonoBehaviour
             component = target.AddComponent<T>();
         }
         return component;
-    }
-
-    private static IEnumerable<Dictionary<string, string>> ReadCsv(string path)
-    {
-        string[] lines = File.ReadAllLines(path);
-        if (lines.Length < 2)
-        {
-            yield break;
-        }
-
-        string[] headers = SplitCsvLine(lines[0]);
-        for (int i = 1; i < lines.Length; i++)
-        {
-            if (string.IsNullOrWhiteSpace(lines[i]))
-            {
-                continue;
-            }
-
-            string[] values = SplitCsvLine(lines[i]);
-            Dictionary<string, string> row = new Dictionary<string, string>();
-            for (int h = 0; h < headers.Length && h < values.Length; h++)
-            {
-                row[headers[h]] = values[h];
-            }
-            yield return row;
-        }
-    }
-
-    private static string[] SplitCsvLine(string line)
-    {
-        List<string> values = new List<string>();
-        bool inQuotes = false;
-        string current = "";
-        for (int i = 0; i < line.Length; i++)
-        {
-            char c = line[i];
-            if (c == '"')
-            {
-                inQuotes = !inQuotes;
-            }
-            else if (c == ',' && !inQuotes)
-            {
-                values.Add(current);
-                current = "";
-            }
-            else
-            {
-                current += c;
-            }
-        }
-        values.Add(current);
-        return values.ToArray();
-    }
-
-    private static string Get(Dictionary<string, string> row, string key)
-    {
-        string value;
-        return row.TryGetValue(key, out value) ? value.Trim() : "";
-    }
-
-    private static float GetFloat(Dictionary<string, string> row, string key)
-    {
-        float value;
-        return float.TryParse(Get(row, key), NumberStyles.Float, CultureInfo.InvariantCulture, out value) ? value : 0f;
     }
 
     private static void DestroyImmediateSafe(Object target)

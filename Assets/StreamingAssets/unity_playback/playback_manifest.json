@@ -1,0 +1,25 @@
+{
+  "schema_version": "unity_playback_v2",
+  "scenario_name": "simevents_stateflow_finaltransport_4m1agv",
+  "generated_at": "2026-05-27 18:07:29",
+  "time_unit": "simulation_time",
+  "makespan": 252,
+  "files": {
+    "scene_config": "scene_config.json",
+    "resource_state_timeline": "resource_state_timeline.csv",
+    "agv_motion_timeline": "agv_motion_timeline.csv",
+    "order_state_timeline": "order_state_timeline.csv",
+    "disturbance_markers": "disturbance_markers.csv",
+    "export_validation": "export_validation.csv"
+  },
+  "row_counts": {
+    "resource_state_timeline": 47,
+    "agv_motion_timeline": 22,
+    "order_state_timeline": 40,
+    "disturbance_markers": 1
+  },
+  "validation": {
+    "status": "PASS",
+    "failed_check_count": 0
+  }
+}

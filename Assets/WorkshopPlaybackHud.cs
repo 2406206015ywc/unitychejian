@@ -51,7 +51,7 @@ public class WorkshopPlaybackHud : MonoBehaviour
     {
         ClearChildren(transform);
         EnsureController();
-        uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        uiFont = WorkshopFontProvider.GetFont();
 
         ConfigureCanvas();
 
@@ -70,6 +70,7 @@ public class WorkshopPlaybackHud : MonoBehaviour
         BuildCompactControlPanel(bar.transform);
         BuildCompactOrderPanel(bar.transform);
 
+        WorkshopFontProvider.ApplyToChildren(transform);
         Refresh();
     }
 
@@ -86,7 +87,6 @@ public class WorkshopPlaybackHud : MonoBehaviour
         EnsureController();
         if (controller != null)
         {
-            controller.LoadPlaybackPackage();
             controller.SetPlaybackTime(controller.playbackTime);
         }
     }
@@ -581,7 +581,7 @@ public class WorkshopPlaybackHud : MonoBehaviour
         GameObject textObject = new GameObject(objectName);
         textObject.transform.SetParent(parent, false);
         Text text = textObject.AddComponent<Text>();
-        text.font = uiFont != null ? uiFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        text.font = uiFont != null ? uiFont : WorkshopFontProvider.GetFont();
         text.text = textValue;
         text.fontSize = fontSize;
         text.fontStyle = style;

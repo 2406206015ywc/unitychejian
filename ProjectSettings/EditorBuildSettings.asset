@@ -4,5 +4,8 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/CodexXietong_Main.unity
+    guid: c3ed9af886220494496690adc7e99d13
   m_configObjects: {}

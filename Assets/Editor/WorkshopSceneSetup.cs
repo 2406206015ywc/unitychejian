@@ -113,7 +113,7 @@ public static class WorkshopSceneSetup
             manager = managerObject.AddComponent<OrderVisualManager>();
         }
 
-        manager.playbackDirectory = "C:/Users/ywc/Desktop/codex/matlab_workshop_model/output/unity_export_v2/simevents_stateflow_finaltransport_4m1agv";
+        manager.playbackDirectory = PlaybackDataLoader.DefaultMatlabPlaybackFolder;
         manager.agvObjectName = "AGV_01";
         manager.partScale = new Vector3(0.45f, 0.24f, 0.45f);
         manager.groundHeight = 0.22f;
@@ -138,7 +138,7 @@ public static class WorkshopSceneSetup
             manager = managerObject.AddComponent<DisturbanceEventManager>();
         }
 
-        manager.playbackDirectory = "C:/Users/ywc/Desktop/codex/matlab_workshop_model/output/unity_export_v2/simevents_stateflow_finaltransport_4m1agv";
+        manager.playbackDirectory = PlaybackDataLoader.DefaultMatlabPlaybackFolder;
         manager.agvObjectName = "AGV_01";
         manager.markerScale = 0.012f;
         manager.zeroDurationHoldSeconds = 5f;
@@ -162,7 +162,7 @@ public static class WorkshopSceneSetup
             controller = controllerObject.AddComponent<MatlabPlaybackController>();
         }
 
-        controller.playbackDirectory = "C:/Users/ywc/Desktop/codex/matlab_workshop_model/output/unity_export_v2/simevents_stateflow_finaltransport_4m1agv";
+        controller.playbackDirectory = PlaybackDataLoader.DefaultMatlabPlaybackFolder;
         controller.agvObjectName = "AGV_01";
         controller.useUnitySceneNodes = true;
         controller.useAisleRouting = true;

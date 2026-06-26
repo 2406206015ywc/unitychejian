@@ -10,8 +10,6 @@ public class WorkshopDashboardHud : MonoBehaviour
     public bool createDefaultLayoutIfMissing = false;
 
     [Header("Playback")]
-    public Button playPauseButton;
-    public Text playPauseText;
     public Text overallProgressText;
     public Text orderSummaryText;
     public Text currentOrdersText;
@@ -63,7 +61,6 @@ public class WorkshopDashboardHud : MonoBehaviour
         EnsureController();
         if (controller != null)
         {
-            controller.LoadPlaybackPackage();
             controller.SetPlaybackTime(controller.playbackTime);
         }
         Refresh();
@@ -77,7 +74,7 @@ public class WorkshopDashboardHud : MonoBehaviour
     [ContextMenu("Rebuild Editable Dashboard Layout")]
     public void RebuildEditableLayout()
     {
-        uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        uiFont = WorkshopFontProvider.GetFont();
         ClearChildren(transform);
         ConfigureCanvas();
 
@@ -156,9 +153,6 @@ public class WorkshopDashboardHud : MonoBehaviour
         layout.childForceExpandWidth = true;
 
         GameObject overall = CreateDashboardModule("Module_Overall", panel.transform, 190f);
-        playPauseButton = CreateButton("PlayPauseButton", overall.transform, "\u64ad\u653e", selectedButtonColor);
-        playPauseButton.gameObject.AddComponent<LayoutElement>().preferredHeight = 34f;
-        playPauseText = playPauseButton.GetComponentInChildren<Text>();
         overallProgressText = CreateText("Overall_Progress", overall.transform, "\u603b\u4f53\u8fdb\u5ea6 0%", 16, FontStyle.Bold, TextAnchor.MiddleLeft, textColor);
         overallProgressText.gameObject.AddComponent<LayoutElement>().preferredHeight = 28f;
         orderSummaryText = CreateText("Order_Summary", overall.transform, "", 14, FontStyle.Normal, TextAnchor.UpperLeft, mutedTextColor);
@@ -194,7 +188,7 @@ public class WorkshopDashboardHud : MonoBehaviour
     private void CreateModuleTitle(Transform parent, string title)
     {
         Text text = CreateText("Title", parent, title, 15, FontStyle.Bold, TextAnchor.MiddleLeft, textColor);
-        text.gameObject.AddComponent<LayoutElement>().preferredHeight = 22f;
+        text.gameObject.AddComponent<LayoutElement>().preferredHeight = 28f;
     }
 
     private Button CreateDeviceButton(string name, Transform parent, string label, string resourceId)
@@ -207,8 +201,7 @@ public class WorkshopDashboardHud : MonoBehaviour
 
     private void BindSceneReferences()
     {
-        if (playPauseButton == null) playPauseButton = FindComponent<Button>("PlayPauseButton");
-        if (playPauseText == null && playPauseButton != null) playPauseText = playPauseButton.GetComponentInChildren<Text>(true);
+        WorkshopFontProvider.ApplyToChildren(transform);
         if (overallProgressText == null) overallProgressText = FindComponent<Text>("Overall_Progress");
         if (orderSummaryText == null) orderSummaryText = FindComponent<Text>("Order_Summary");
         if (currentOrdersText == null) currentOrdersText = FindComponent<Text>("Current_Orders");
@@ -231,7 +224,6 @@ public class WorkshopDashboardHud : MonoBehaviour
             return;
         }
 
-        if (playPauseButton != null) playPauseButton.onClick.AddListener(TogglePlayPause);
         if (machine1Button != null) machine1Button.onClick.AddListener(() => SelectResource("M1"));
         if (machine2Button != null) machine2Button.onClick.AddListener(() => SelectResource("M2"));
         if (machine3Button != null) machine3Button.onClick.AddListener(() => SelectResource("M3"));
@@ -257,10 +249,6 @@ public class WorkshopDashboardHud : MonoBehaviour
         float makespan = Mathf.Max(0.0001f, controller.Makespan);
         float progress = Mathf.Clamp01(controller.playbackTime / makespan);
 
-        if (playPauseText != null)
-        {
-            playPauseText.text = controller.IsPlaying ? "\u6682\u505c" : "\u64ad\u653e";
-        }
         if (overallProgressText != null)
         {
             overallProgressText.text = string.Format(CultureInfo.InvariantCulture, "\u603b\u4f53\u8fdb\u5ea6 {0}%", Mathf.RoundToInt(progress * 100f));
@@ -278,7 +266,7 @@ public class WorkshopDashboardHud : MonoBehaviour
         RefreshDeviceOverview();
         RefreshAgvOverview();
         RefreshDetailPanel();
-        RefreshButtonColors();
+        RefreshButtonSelectionMarkers();
     }
 
     private void RefreshCurrentOrders()
@@ -375,7 +363,7 @@ public class WorkshopDashboardHud : MonoBehaviour
         {
             deviceInfoText.text = string.Format(
                 CultureInfo.InvariantCulture,
-                "\u673a\u5e8a\u7c7b\u578b: {0}\n\u5de5\u4f5c\u72b6\u6001: {1}\n\u5065\u5eb7\u72b6\u6001: {2}",
+                "\u673a\u5e8a\u7c7b\u578b: {0}\n\n\u5de5\u4f5c\u72b6\u6001: {1}\n\n\u5065\u5eb7\u72b6\u6001: {2}",
                 GetMachineType(machineId),
                 GetMachineWorkStatus(machineId),
                 GetHealthStatus(machineId));
@@ -391,7 +379,7 @@ public class WorkshopDashboardHud : MonoBehaviour
         {
             taskInfoText.text = string.Format(
                 CultureInfo.InvariantCulture,
-                "\u8ba2\u5355\u7f16\u53f7: {0}\n\u5de5\u4ef6\u7f16\u53f7: {1}\n\u5f53\u524d\u5de5\u5e8f: {2}/{3}",
+                "\u8ba2\u5355\u7f16\u53f7: {0}\n\n\u5de5\u4ef6\u7f16\u53f7: {1}\n\n\u5f53\u524d\u5de5\u5e8f: {2}/{3}",
                 FormatEmpty(task.orderId),
                 FormatEmpty(task.partId),
                 Mathf.Max(1, task.operationStep),
@@ -399,7 +387,7 @@ public class WorkshopDashboardHud : MonoBehaviour
         }
         else
         {
-            taskInfoText.text = "\u8ba2\u5355\u7f16\u53f7: \u65e0\n\u5de5\u4ef6\u7f16\u53f7: \u65e0\n\u5f53\u524d\u5de5\u5e8f: \u65e0";
+            taskInfoText.text = "\u8ba2\u5355\u7f16\u53f7: \u65e0\n\n\u5de5\u4ef6\u7f16\u53f7: \u65e0\n\n\u5f53\u524d\u5de5\u5e8f: \u65e0";
         }
     }
 
@@ -412,7 +400,7 @@ public class WorkshopDashboardHud : MonoBehaviour
         {
             deviceInfoText.text = string.Format(
                 CultureInfo.InvariantCulture,
-                "AGV\u4fe1\u606f\n\u5de5\u4f5c\u72b6\u6001: {0}\n\u5065\u5eb7\u72b6\u6001: {1}",
+                "\u5de5\u4f5c\u72b6\u6001: {0}\n\n\u5065\u5eb7\u72b6\u6001: {1}",
                 hasTask ? "\u8fd0\u8f93\u4e2d" : "\u7a7a\u95f2",
                 GetHealthStatus(AgvId));
         }
@@ -426,7 +414,7 @@ public class WorkshopDashboardHud : MonoBehaviour
         {
             taskInfoText.text = string.Format(
                 CultureInfo.InvariantCulture,
-                "\u8ba2\u5355\u7f16\u53f7: {0}\n\u5de5\u4ef6\u7f16\u53f7: {1}\n\u8fd0\u8f93\u8def\u5f84: {2} -> {3}",
+                "\u8ba2\u5355\u7f16\u53f7: {0}\n\n\u5de5\u4ef6\u7f16\u53f7: {1}\n\n\u8fd0\u8f93\u8def\u5f84: {2} -> {3}",
                 FormatEmpty(task.orderId),
                 FormatEmpty(task.partId),
                 FormatNode(task.fromNode),
@@ -434,7 +422,7 @@ public class WorkshopDashboardHud : MonoBehaviour
         }
         else
         {
-            taskInfoText.text = "\u8ba2\u5355\u7f16\u53f7: \u65e0\n\u5de5\u4ef6\u7f16\u53f7: \u65e0\n\u8fd0\u8f93\u8def\u5f84: \u65e0";
+            taskInfoText.text = "\u8ba2\u5355\u7f16\u53f7: \u65e0\n\n\u5de5\u4ef6\u7f16\u53f7: \u65e0\n\n\u8fd0\u8f93\u8def\u5f84: \u65e0";
         }
     }
 
@@ -457,6 +445,10 @@ public class WorkshopDashboardHud : MonoBehaviour
         if (task.state == "WaitingTransport")
         {
             return FormatEmpty(task.orderId) + " \u7b49\u5f85AGV";
+        }
+        if (task.state == "WaitingProcessing")
+        {
+            return FormatEmpty(task.orderId) + " \u7b49\u5f85\u52a0\u5de5";
         }
         if (task.state == "Finished")
         {
@@ -493,53 +485,40 @@ public class WorkshopDashboardHud : MonoBehaviour
         return string.IsNullOrWhiteSpace(disturbance) || disturbance == "\u673a\u5e8a\u6062\u590d" ? "\u6b63\u5e38" : disturbance;
     }
 
-    private void TogglePlayPause()
+    private void RefreshButtonSelectionMarkers()
     {
-        EnsureController();
-        if (controller == null)
-        {
-            return;
-        }
-
-        if (controller.IsPlaying)
-        {
-            controller.Pause();
-        }
-        else
-        {
-            controller.Play();
-        }
-        Refresh();
+        SetButtonSelectionMarker(machine1Button, selectedResourceId == "M1");
+        SetButtonSelectionMarker(machine2Button, selectedResourceId == "M2");
+        SetButtonSelectionMarker(machine3Button, selectedResourceId == "M3");
+        SetButtonSelectionMarker(machine4Button, selectedResourceId == "M4");
+        SetButtonSelectionMarker(agvButton, selectedResourceId == AgvId);
     }
 
-    private void RefreshButtonColors()
-    {
-        SetButtonColor(machine1Button, selectedResourceId == "M1");
-        SetButtonColor(machine2Button, selectedResourceId == "M2");
-        SetButtonColor(machine3Button, selectedResourceId == "M3");
-        SetButtonColor(machine4Button, selectedResourceId == "M4");
-        SetButtonColor(agvButton, selectedResourceId == AgvId);
-    }
-
-    private void SetButtonColor(Button button, bool selected)
+    private void SetButtonSelectionMarker(Button button, bool selected)
     {
         if (button == null)
         {
             return;
         }
 
-        Color baseColor = selected ? selectedButtonColor : normalButtonColor;
-        Image image = button.GetComponent<Image>();
-        if (image != null)
+        Transform marker = button.transform.Find("Selected_Marker");
+        if (marker == null)
         {
-            image.color = baseColor;
+            marker = button.transform.Find("SelectedMarker");
         }
-        ColorBlock colors = button.colors;
-        colors.normalColor = baseColor;
-        colors.highlightedColor = Color.Lerp(baseColor, Color.white, 0.18f);
-        colors.pressedColor = Color.Lerp(baseColor, Color.black, 0.25f);
-        colors.selectedColor = colors.highlightedColor;
-        button.colors = colors;
+        if (marker == null)
+        {
+            marker = button.transform.Find("Selection_Marker");
+        }
+        if (marker == null)
+        {
+            marker = button.transform.Find("SelectionMarker");
+        }
+
+        if (marker != null)
+        {
+            marker.gameObject.SetActive(selected);
+        }
     }
 
     private void EnsureController()
@@ -630,7 +609,7 @@ public class WorkshopDashboardHud : MonoBehaviour
         GameObject textObject = new GameObject(objectName);
         textObject.transform.SetParent(parent, false);
         Text text = textObject.AddComponent<Text>();
-        text.font = uiFont != null ? uiFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        text.font = uiFont != null ? uiFont : WorkshopFontProvider.GetFont();
         text.text = value;
         text.fontSize = fontSize;
         text.fontStyle = style;

@@ -200,7 +200,7 @@ public class FloatingStatusLabel : MonoBehaviour
         textRect.offsetMax = new Vector2(-8f, 0f);
         stateText = EnsureComponent<Text>(textRect.gameObject);
         stateText.alignment = TextAnchor.MiddleLeft;
-        stateText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        stateText.font = WorkshopFontProvider.GetFont();
         stateText.fontSize = 20;
         stateText.color = Color.white;
         stateText.raycastTarget = false;

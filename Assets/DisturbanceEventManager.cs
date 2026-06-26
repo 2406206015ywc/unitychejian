@@ -1,13 +1,13 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class DisturbanceEventManager : MonoBehaviour
 {
-    public string playbackDirectory = "C:/Users/ywc/Desktop/codex/matlab_workshop_model/output/unity_export_v2/simevents_stateflow_finaltransport_4m1agv";
+    public string playbackDirectory = PlaybackDataLoader.DefaultMatlabPlaybackFolder;
     public string agvObjectName = "AGV_01";
     public Vector3 machineMarkerOffset = new Vector3(0f, 3.35f, 0f);
     public Vector3 agvMarkerOffset = new Vector3(0f, 1.55f, 0f);
@@ -28,27 +28,64 @@ public class DisturbanceEventManager : MonoBehaviour
 
     public void LoadDisturbances()
     {
+        LoadDisturbances(PlaybackDataLoader.ResolvePlaybackRoot(playbackDirectory));
+    }
+
+    public void LoadDisturbances(string rootDirectory)
+    {
         disturbances.Clear();
         CacheSceneObjects();
 
-        string path = Path.Combine(playbackDirectory, "disturbance_markers.csv");
-        if (!File.Exists(path))
+        string[] lines;
+        string error;
+        if (!PlaybackDataLoader.TryReadAllLines(rootDirectory, "disturbance_markers.csv", out lines, out error))
         {
-            Debug.LogError("[DisturbanceEventManager] Missing disturbance markers: " + path);
+            EnsureMarkerPool();
+            hasLoaded = true;
+            Debug.Log("[DisturbanceEventManager] No disturbance_markers.csv found. Disturbance world markers are disabled for this package.");
             return;
         }
 
-        foreach (Dictionary<string, string> row in ReadCsv(path))
+        LoadDisturbancesFromLines(lines);
+    }
+
+    public IEnumerator LoadDisturbancesRoutine(string rootDirectory)
+    {
+        disturbances.Clear();
+        CacheSceneObjects();
+
+        string[] lines = null;
+        string loadError = "";
+        yield return PlaybackDataLoader.ReadAllLinesRoutine(rootDirectory, "disturbance_markers.csv", (loadedLines, error) =>
+        {
+            lines = loadedLines;
+            loadError = error;
+        });
+
+        if (!string.IsNullOrEmpty(loadError))
+        {
+            EnsureMarkerPool();
+            hasLoaded = true;
+            Debug.Log("[DisturbanceEventManager] No disturbance_markers.csv found. Disturbance world markers are disabled for this package.");
+            yield break;
+        }
+
+        LoadDisturbancesFromLines(lines);
+    }
+
+    private void LoadDisturbancesFromLines(string[] lines)
+    {
+        foreach (Dictionary<string, string> row in PlaybackDataLoader.ReadCsv(lines))
         {
             DisturbanceRow disturbance = new DisturbanceRow();
-            disturbance.markerId = Get(row, "marker_id");
-            disturbance.disturbanceType = Get(row, "disturbance_type");
-            disturbance.targetId = Get(row, "target_id");
-            disturbance.orderId = Get(row, "order_id");
-            disturbance.partId = Get(row, "part_id");
-            disturbance.startTime = GetFloat(row, "start_time");
-            disturbance.endTime = GetFloat(row, "end_time");
-            disturbance.effect = Get(row, "effect");
+            disturbance.markerId = PlaybackDataLoader.Get(row, "marker_id");
+            disturbance.disturbanceType = PlaybackDataLoader.Get(row, "disturbance_type");
+            disturbance.targetId = PlaybackDataLoader.Get(row, "target_id");
+            disturbance.orderId = PlaybackDataLoader.Get(row, "order_id");
+            disturbance.partId = PlaybackDataLoader.Get(row, "part_id");
+            disturbance.startTime = PlaybackDataLoader.GetFloat(row, "start_time");
+            disturbance.endTime = PlaybackDataLoader.GetFloat(row, "end_time");
+            disturbance.effect = PlaybackDataLoader.Get(row, "effect");
 
             if (!string.IsNullOrWhiteSpace(disturbance.markerId))
             {
@@ -66,7 +103,7 @@ public class DisturbanceEventManager : MonoBehaviour
     {
         if (!hasLoaded)
         {
-            LoadDisturbances();
+            return;
         }
 
         ActiveEventCount = 0;
@@ -122,7 +159,7 @@ public class DisturbanceEventManager : MonoBehaviour
     {
         if (!hasLoaded)
         {
-            LoadDisturbances();
+            return "";
         }
 
         if (string.IsNullOrWhiteSpace(targetId))
@@ -229,7 +266,7 @@ public class DisturbanceEventManager : MonoBehaviour
         GameObject textObject = new GameObject("Text");
         textObject.transform.SetParent(panelObject.transform, false);
         Text text = textObject.AddComponent<Text>();
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        WorkshopFontProvider.Apply(text);
         text.fontSize = 20;
         text.alignment = TextAnchor.MiddleLeft;
         text.color = Color.white;
@@ -349,85 +386,6 @@ public class DisturbanceEventManager : MonoBehaviour
             default:
                 return new Color(0.25f, 0.55f, 1f, 1f);
         }
-    }
-
-    private static IEnumerable<Dictionary<string, string>> ReadCsv(string path)
-    {
-        string[] lines = File.ReadAllLines(path);
-        if (lines.Length < 2)
-        {
-            yield break;
-        }
-
-        List<string> headers = SplitCsvLine(lines[0]);
-        for (int i = 1; i < lines.Length; i++)
-        {
-            if (string.IsNullOrWhiteSpace(lines[i]))
-            {
-                continue;
-            }
-
-            List<string> values = SplitCsvLine(lines[i]);
-            Dictionary<string, string> row = new Dictionary<string, string>();
-            for (int j = 0; j < headers.Count; j++)
-            {
-                row[headers[j]] = j < values.Count ? values[j] : "";
-            }
-            yield return row;
-        }
-    }
-
-    private static List<string> SplitCsvLine(string line)
-    {
-        List<string> result = new List<string>();
-        bool inQuotes = false;
-        string current = "";
-
-        for (int i = 0; i < line.Length; i++)
-        {
-            char c = line[i];
-            if (c == '"')
-            {
-                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
-                {
-                    current += '"';
-                    i++;
-                }
-                else
-                {
-                    inQuotes = !inQuotes;
-                }
-            }
-            else if (c == ',' && !inQuotes)
-            {
-                result.Add(current);
-                current = "";
-            }
-            else
-            {
-                current += c;
-            }
-        }
-
-        result.Add(current);
-        return result;
-    }
-
-    private static string Get(Dictionary<string, string> row, string key)
-    {
-        string value;
-        return row.TryGetValue(key, out value) ? value : "";
-    }
-
-    private static float GetFloat(Dictionary<string, string> row, string key)
-    {
-        string value = Get(row, key);
-        float result;
-        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result))
-        {
-            return result;
-        }
-        return 0f;
     }
 
     private class DisturbanceRow

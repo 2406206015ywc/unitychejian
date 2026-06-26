@@ -153,7 +153,7 @@ public class OrderVisual : MonoBehaviour
         GameObject textObject = new GameObject("Text");
         textObject.transform.SetParent(canvasObject.transform, false);
         labelText = textObject.AddComponent<Text>();
-        labelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        labelText.font = WorkshopFontProvider.GetFont();
         labelText.text = orderId;
         labelText.fontSize = 20;
         labelText.fontStyle = FontStyle.Bold;

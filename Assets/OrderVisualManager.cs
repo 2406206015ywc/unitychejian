@@ -1,12 +1,11 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
 using UnityEngine;
 
 public class OrderVisualManager : MonoBehaviour
 {
-    public string playbackDirectory = "C:/Users/ywc/Desktop/codex/matlab_workshop_model/output/unity_export_v2/simevents_stateflow_finaltransport_4m1agv";
+    public string playbackDirectory = PlaybackDataLoader.DefaultMatlabPlaybackFolder;
     public string agvObjectName = "AGV_01";
     public Vector3 partScale = new Vector3(0.45f, 0.24f, 0.45f);
     public Vector3 agvCarryOffset = new Vector3(0f, 0.65f, 0f);
@@ -103,27 +102,62 @@ public class OrderVisualManager : MonoBehaviour
 
     public void LoadOrderTimeline()
     {
+        LoadOrderTimeline(PlaybackDataLoader.ResolvePlaybackRoot(playbackDirectory));
+    }
+
+    public void LoadOrderTimeline(string rootDirectory)
+    {
         orderStates.Clear();
         partIdByOrderId.Clear();
         visualsByOrderId.Clear();
         CacheSceneObjects();
 
-        string orderPath = Path.Combine(playbackDirectory, "order_state_timeline.csv");
-        if (!File.Exists(orderPath))
+        string[] lines;
+        string error;
+        if (!PlaybackDataLoader.TryReadAllLines(rootDirectory, "order_state_timeline.csv", out lines, out error))
         {
-            Debug.LogError("[OrderVisualManager] Missing order timeline: " + orderPath);
+            Debug.LogError("[OrderVisualManager] " + error);
             return;
         }
 
-        foreach (Dictionary<string, string> row in ReadCsv(orderPath))
+        LoadOrderTimelineFromLines(lines);
+    }
+
+    public IEnumerator LoadOrderTimelineRoutine(string rootDirectory)
+    {
+        orderStates.Clear();
+        partIdByOrderId.Clear();
+        visualsByOrderId.Clear();
+        CacheSceneObjects();
+
+        string[] lines = null;
+        string loadError = "";
+        yield return PlaybackDataLoader.ReadAllLinesRoutine(rootDirectory, "order_state_timeline.csv", (loadedLines, error) =>
+        {
+            lines = loadedLines;
+            loadError = error;
+        });
+
+        if (!string.IsNullOrEmpty(loadError))
+        {
+            Debug.LogError("[OrderVisualManager] " + loadError);
+            yield break;
+        }
+
+        LoadOrderTimelineFromLines(lines);
+    }
+
+    private void LoadOrderTimelineFromLines(string[] lines)
+    {
+        foreach (Dictionary<string, string> row in PlaybackDataLoader.ReadCsv(lines))
         {
             OrderStateRow stateRow = new OrderStateRow();
-            stateRow.orderId = Get(row, "order_id");
-            stateRow.partId = Get(row, "part_id");
-            stateRow.state = Get(row, "state");
-            stateRow.location = Get(row, "location");
-            stateRow.startTime = GetFloat(row, "start_time");
-            stateRow.endTime = GetFloat(row, "end_time");
+            stateRow.orderId = PlaybackDataLoader.Get(row, "order_id");
+            stateRow.partId = PlaybackDataLoader.Get(row, "part_id");
+            stateRow.state = PlaybackDataLoader.Get(row, "state");
+            stateRow.location = PlaybackDataLoader.Get(row, "location");
+            stateRow.startTime = PlaybackDataLoader.GetFloat(row, "start_time");
+            stateRow.endTime = PlaybackDataLoader.GetFloat(row, "end_time");
 
             if (string.IsNullOrWhiteSpace(stateRow.orderId))
             {
@@ -154,7 +188,7 @@ public class OrderVisualManager : MonoBehaviour
     {
         if (!hasLoaded)
         {
-            LoadOrderTimeline();
+            return;
         }
 
         ActiveOrderCount = 0;
@@ -252,7 +286,7 @@ public class OrderVisualManager : MonoBehaviour
     {
         if (!hasLoaded)
         {
-            LoadOrderTimeline();
+            return;
         }
     }
 
@@ -480,85 +514,6 @@ public class OrderVisualManager : MonoBehaviour
         int col = slot % 5;
         int row = slot / 5;
         return slotOffset * col + Vector3.back * row * 0.52f;
-    }
-
-    private static IEnumerable<Dictionary<string, string>> ReadCsv(string path)
-    {
-        string[] lines = File.ReadAllLines(path);
-        if (lines.Length < 2)
-        {
-            yield break;
-        }
-
-        List<string> headers = SplitCsvLine(lines[0]);
-        for (int i = 1; i < lines.Length; i++)
-        {
-            if (string.IsNullOrWhiteSpace(lines[i]))
-            {
-                continue;
-            }
-
-            List<string> values = SplitCsvLine(lines[i]);
-            Dictionary<string, string> row = new Dictionary<string, string>();
-            for (int j = 0; j < headers.Count; j++)
-            {
-                row[headers[j]] = j < values.Count ? values[j] : "";
-            }
-            yield return row;
-        }
-    }
-
-    private static List<string> SplitCsvLine(string line)
-    {
-        List<string> result = new List<string>();
-        bool inQuotes = false;
-        string current = "";
-
-        for (int i = 0; i < line.Length; i++)
-        {
-            char c = line[i];
-            if (c == '"')
-            {
-                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
-                {
-                    current += '"';
-                    i++;
-                }
-                else
-                {
-                    inQuotes = !inQuotes;
-                }
-            }
-            else if (c == ',' && !inQuotes)
-            {
-                result.Add(current);
-                current = "";
-            }
-            else
-            {
-                current += c;
-            }
-        }
-
-        result.Add(current);
-        return result;
-    }
-
-    private static string Get(Dictionary<string, string> row, string key)
-    {
-        string value;
-        return row.TryGetValue(key, out value) ? value : "";
-    }
-
-    private static float GetFloat(Dictionary<string, string> row, string key)
-    {
-        string value = Get(row, key);
-        float result;
-        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result))
-        {
-            return result;
-        }
-        return 0f;
     }
 
     private class OrderStateRow

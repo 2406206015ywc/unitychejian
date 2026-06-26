@@ -1,14 +1,14 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using UnityEngine;
 
 public class MatlabPlaybackController : MonoBehaviour
 {
-    public string playbackDirectory = "C:/Users/ywc/Desktop/codex/matlab_workshop_model/output/unity_export_v2/simevents_stateflow_finaltransport_4m1agv";
+    public string playbackDirectory = PlaybackDataLoader.DefaultMatlabPlaybackFolder;
     public string agvObjectName = "AGV_01";
-    public bool playOnStart = false;
+    public bool playOnStart = true;
     public bool useUnitySceneNodes = true;
     public bool useAisleRouting = true;
     public bool showDebugOnGui = false;
@@ -24,6 +24,8 @@ public class MatlabPlaybackController : MonoBehaviour
 
     private GameObject agvObject;
     private bool isPlaying;
+    private bool packageLoaded;
+    private bool packageLoading;
     private float makespan;
     private string loadStatus = "Not loaded";
 
@@ -42,15 +44,23 @@ public class MatlabPlaybackController : MonoBehaviour
         get { return loadStatus; }
     }
 
-    private void Awake()
+    public bool PackageLoaded
+    {
+        get { return packageLoaded; }
+    }
+
+    private void Start()
     {
         LoadPlaybackPackage();
-        ResetPlayback();
-        isPlaying = playOnStart;
     }
 
     private void Update()
     {
+        if (!packageLoaded)
+        {
+            return;
+        }
+
         if (isPlaying)
         {
             playbackTime += Time.deltaTime * playbackSpeed;
@@ -66,6 +76,37 @@ public class MatlabPlaybackController : MonoBehaviour
 
     public void LoadPlaybackPackage()
     {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (Application.isPlaying && isActiveAndEnabled)
+        {
+            if (!packageLoading)
+            {
+                StartCoroutine(LoadPlaybackPackageRoutine());
+            }
+            return;
+        }
+#endif
+
+        LoadPlaybackPackageFromDisk();
+        ResetPlayback();
+        if (playOnStart)
+        {
+            Play();
+        }
+    }
+
+    private IEnumerator LoadPlaybackPackageRoutine()
+    {
+        if (packageLoading)
+        {
+            yield break;
+        }
+
+        packageLoading = true;
+        packageLoaded = false;
+        isPlaying = false;
+        loadStatus = "Loading playback files";
+
         agvMotions.Clear();
         resourceStates.Clear();
         resourcesById.Clear();
@@ -73,31 +114,168 @@ public class MatlabPlaybackController : MonoBehaviour
 
         CacheSceneObjects();
 
-        string motionPath = Path.Combine(playbackDirectory, "agv_motion_timeline.csv");
-        string resourcePath = Path.Combine(playbackDirectory, "resource_state_timeline.csv");
+        string root = PlaybackDataLoader.ResolvePlaybackRoot(playbackDirectory);
+        string[] motionLines = null;
+        string[] resourceLines = null;
+        string[] machineStateLines = null;
+        string[] agvStateLines = null;
+        string loadError = "";
 
-        if (!File.Exists(motionPath) || !File.Exists(resourcePath))
+        yield return PlaybackDataLoader.ReadAllLinesRoutine(root, "agv_motion_timeline.csv", (lines, error) =>
         {
-            loadStatus = "Missing playback files";
-            Debug.LogError("[MatlabPlaybackController] Missing playback files in " + playbackDirectory);
-            return;
+            motionLines = lines;
+            loadError = error;
+        });
+        if (!string.IsNullOrEmpty(loadError))
+        {
+            yield return PlaybackDataLoader.ReadAllLinesRoutine(root, "agv_task_log.csv", (lines, error) =>
+            {
+                motionLines = lines;
+                loadError = error;
+            });
+            if (!string.IsNullOrEmpty(loadError))
+            {
+                loadStatus = "Missing playback files";
+                Debug.LogError("[MatlabPlaybackController] " + loadError);
+                packageLoading = false;
+                yield break;
+            }
         }
 
-        LoadAgvMotions(motionPath);
-        LoadResourceStates(resourcePath);
+        yield return PlaybackDataLoader.ReadAllLinesRoutine(root, "resource_state_timeline.csv", (lines, error) =>
+        {
+            resourceLines = lines;
+            loadError = error;
+        });
+        if (!string.IsNullOrEmpty(loadError))
+        {
+            yield return PlaybackDataLoader.ReadAllLinesRoutine(root, "machine_state_timeline.csv", (lines, error) =>
+            {
+                machineStateLines = lines;
+                loadError = error;
+            });
+            if (!string.IsNullOrEmpty(loadError))
+            {
+                loadStatus = "Missing playback files";
+                Debug.LogError("[MatlabPlaybackController] " + loadError);
+                packageLoading = false;
+                yield break;
+            }
+
+            yield return PlaybackDataLoader.ReadAllLinesRoutine(root, "agv_state_timeline.csv", (lines, error) =>
+            {
+                agvStateLines = lines;
+                loadError = error;
+            });
+            if (!string.IsNullOrEmpty(loadError))
+            {
+                agvStateLines = Array.Empty<string>();
+                loadError = "";
+            }
+        }
+
+        LoadAgvMotions(motionLines);
+        if (resourceLines != null)
+        {
+            LoadResourceStates(resourceLines);
+        }
+        else
+        {
+            LoadResourceStates(machineStateLines);
+            LoadResourceStates(agvStateLines);
+        }
         if (orderVisualManager != null)
         {
             orderVisualManager.playbackDirectory = playbackDirectory;
             orderVisualManager.agvObjectName = agvObjectName;
-            orderVisualManager.LoadOrderTimeline();
+            yield return orderVisualManager.LoadOrderTimelineRoutine(root);
         }
         if (disturbanceEventManager != null)
         {
             disturbanceEventManager.playbackDirectory = playbackDirectory;
             disturbanceEventManager.agvObjectName = agvObjectName;
-            disturbanceEventManager.LoadDisturbances();
+            yield return disturbanceEventManager.LoadDisturbancesRoutine(root);
         }
         makespan = CalculateMakespan();
+        loadStatus = string.Format(CultureInfo.InvariantCulture, "Loaded: {0} AGV rows, {1} resource rows", agvMotions.Count, resourceStates.Count);
+        packageLoaded = true;
+        packageLoading = false;
+        ResetPlayback();
+        if (playOnStart)
+        {
+            Play();
+        }
+        Debug.Log("[MatlabPlaybackController] " + loadStatus);
+    }
+
+    private void LoadPlaybackPackageFromDisk()
+    {
+        agvMotions.Clear();
+        resourceStates.Clear();
+        resourcesById.Clear();
+        nodesById.Clear();
+
+        CacheSceneObjects();
+
+        string root = PlaybackDataLoader.ResolvePlaybackRoot(playbackDirectory);
+        string[] motionLines;
+        string[] resourceLines;
+        string error;
+
+        if (!PlaybackDataLoader.TryReadAllLines(root, "agv_motion_timeline.csv", out motionLines, out error) &&
+            !PlaybackDataLoader.TryReadAllLines(root, "agv_task_log.csv", out motionLines, out error))
+        {
+            loadStatus = "Missing playback files";
+            Debug.LogError("[MatlabPlaybackController] " + error);
+            return;
+        }
+
+        string[] machineStateLines = Array.Empty<string>();
+        string[] agvStateLines = Array.Empty<string>();
+        bool hasLegacyResourceTimeline = PlaybackDataLoader.TryReadAllLines(root, "resource_state_timeline.csv", out resourceLines, out error);
+        if (!hasLegacyResourceTimeline &&
+            !PlaybackDataLoader.TryReadAllLines(root, "machine_state_timeline.csv", out machineStateLines, out error))
+        {
+            loadStatus = "Missing playback files";
+            Debug.LogError("[MatlabPlaybackController] " + error);
+            return;
+        }
+        if (!hasLegacyResourceTimeline &&
+            !PlaybackDataLoader.TryReadAllLines(root, "agv_state_timeline.csv", out agvStateLines, out error))
+        {
+            agvStateLines = Array.Empty<string>();
+        }
+        else if (hasLegacyResourceTimeline)
+        {
+            machineStateLines = Array.Empty<string>();
+            agvStateLines = Array.Empty<string>();
+        }
+
+        LoadAgvMotions(motionLines);
+        if (hasLegacyResourceTimeline)
+        {
+            LoadResourceStates(resourceLines);
+        }
+        else
+        {
+            LoadResourceStates(machineStateLines);
+            LoadResourceStates(agvStateLines);
+        }
+        if (orderVisualManager != null)
+        {
+            orderVisualManager.playbackDirectory = playbackDirectory;
+            orderVisualManager.agvObjectName = agvObjectName;
+            orderVisualManager.LoadOrderTimeline(root);
+        }
+        if (disturbanceEventManager != null)
+        {
+            disturbanceEventManager.playbackDirectory = playbackDirectory;
+            disturbanceEventManager.agvObjectName = agvObjectName;
+            disturbanceEventManager.LoadDisturbances(root);
+        }
+
+        makespan = CalculateMakespan();
+        packageLoaded = true;
         loadStatus = string.Format(CultureInfo.InvariantCulture, "Loaded: {0} AGV rows, {1} resource rows", agvMotions.Count, resourceStates.Count);
         Debug.Log("[MatlabPlaybackController] " + loadStatus);
     }
@@ -106,7 +284,10 @@ public class MatlabPlaybackController : MonoBehaviour
     {
         playbackTime = 0f;
         isPlaying = false;
-        ApplyPlaybackTime(playbackTime);
+        if (packageLoaded)
+        {
+            ApplyPlaybackTime(playbackTime);
+        }
     }
 
     public void Play()
@@ -126,7 +307,10 @@ public class MatlabPlaybackController : MonoBehaviour
     public void SetPlaybackTime(float time)
     {
         playbackTime = Mathf.Clamp(time, 0f, makespan);
-        ApplyPlaybackTime(playbackTime);
+        if (packageLoaded)
+        {
+            ApplyPlaybackTime(playbackTime);
+        }
     }
 
     public void SetPlaybackSpeed(float speed)
@@ -221,6 +405,11 @@ public class MatlabPlaybackController : MonoBehaviour
 
     public void ApplyPlaybackTime(float time)
     {
+        if (!packageLoaded)
+        {
+            return;
+        }
+
         ApplyAgvMotion(time);
         ApplyResourceStates(time);
         if (orderVisualManager != null)
@@ -276,40 +465,54 @@ public class MatlabPlaybackController : MonoBehaviour
         }
     }
 
-    private void LoadAgvMotions(string path)
+    private void LoadAgvMotions(string[] lines)
     {
-        foreach (Dictionary<string, string> row in ReadCsv(path))
+        foreach (Dictionary<string, string> row in PlaybackDataLoader.ReadCsv(lines))
         {
             AgvMotionRow motion = new AgvMotionRow();
-            motion.taskId = Get(row, "task_id");
-            motion.agvId = Get(row, "agv_id");
-            motion.orderId = Get(row, "order_id");
-            motion.fromNode = Get(row, "from_node");
-            motion.toNode = Get(row, "to_node");
-            motion.startTime = GetFloat(row, "start_time");
-            motion.endTime = GetFloat(row, "end_time");
-            motion.duration = Mathf.Max(0.0001f, GetFloat(row, "duration"));
-            motion.fromPosition = new Vector3(GetFloat(row, "from_x"), GetFloat(row, "from_y"), GetFloat(row, "from_z"));
-            motion.toPosition = new Vector3(GetFloat(row, "to_x"), GetFloat(row, "to_y"), GetFloat(row, "to_z"));
+            motion.taskId = FirstNonEmpty(
+                PlaybackDataLoader.Get(row, "task_id"),
+                PlaybackDataLoader.Get(row, "log_id"));
+            motion.agvId = PlaybackDataLoader.Get(row, "agv_id");
+            motion.orderId = PlaybackDataLoader.Get(row, "order_id");
+            motion.fromNode = PlaybackDataLoader.Get(row, "from_node");
+            motion.toNode = PlaybackDataLoader.Get(row, "to_node");
+            motion.startTime = PlaybackDataLoader.GetFloat(row, "start_time");
+            motion.endTime = PlaybackDataLoader.GetFloat(row, "end_time");
+            motion.duration = Mathf.Max(0.0001f, PlaybackDataLoader.GetFloat(row, "duration"));
+            motion.fromPosition = new Vector3(PlaybackDataLoader.GetFloat(row, "from_x"), PlaybackDataLoader.GetFloat(row, "from_y"), PlaybackDataLoader.GetFloat(row, "from_z"));
+            motion.toPosition = new Vector3(PlaybackDataLoader.GetFloat(row, "to_x"), PlaybackDataLoader.GetFloat(row, "to_y"), PlaybackDataLoader.GetFloat(row, "to_z"));
             agvMotions.Add(motion);
         }
 
         agvMotions.Sort((a, b) => a.startTime.CompareTo(b.startTime));
     }
 
-    private void LoadResourceStates(string path)
+    private void LoadResourceStates(string[] lines)
     {
-        foreach (Dictionary<string, string> row in ReadCsv(path))
+        foreach (Dictionary<string, string> row in PlaybackDataLoader.ReadCsv(lines))
         {
             ResourceStateRow stateRow = new ResourceStateRow();
-            stateRow.resourceId = Get(row, "resource_id");
-            stateRow.state = Get(row, "state");
-            stateRow.startTime = GetFloat(row, "start_time");
-            stateRow.endTime = GetFloat(row, "end_time");
+            stateRow.resourceId = PlaybackDataLoader.Get(row, "resource_id");
+            stateRow.state = PlaybackDataLoader.Get(row, "state");
+            stateRow.startTime = PlaybackDataLoader.GetFloat(row, "start_time");
+            stateRow.endTime = PlaybackDataLoader.GetFloat(row, "end_time");
             resourceStates.Add(stateRow);
         }
 
         resourceStates.Sort((a, b) => a.startTime.CompareTo(b.startTime));
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(values[i]))
+            {
+                return values[i];
+            }
+        }
+        return "";
     }
 
     private void ApplyAgvMotion(float time)
@@ -605,83 +808,6 @@ public class MatlabPlaybackController : MonoBehaviour
         GUILayout.Label(playbackSpeed.ToString("0.0", CultureInfo.InvariantCulture) + "x", GUILayout.Width(48));
         GUILayout.EndHorizontal();
         GUILayout.EndArea();
-    }
-
-    private static IEnumerable<Dictionary<string, string>> ReadCsv(string path)
-    {
-        string[] lines = File.ReadAllLines(path);
-        if (lines.Length < 2)
-        {
-            yield break;
-        }
-
-        List<string> headers = SplitCsvLine(lines[0]);
-        for (int i = 1; i < lines.Length; i++)
-        {
-            if (string.IsNullOrWhiteSpace(lines[i]))
-            {
-                continue;
-            }
-
-            List<string> values = SplitCsvLine(lines[i]);
-            Dictionary<string, string> row = new Dictionary<string, string>();
-            for (int j = 0; j < headers.Count; j++)
-            {
-                row[headers[j]] = j < values.Count ? values[j] : "";
-            }
-            yield return row;
-        }
-    }
-
-    private static List<string> SplitCsvLine(string line)
-    {
-        List<string> result = new List<string>();
-        bool inQuotes = false;
-        string current = "";
-
-        for (int i = 0; i < line.Length; i++)
-        {
-            char c = line[i];
-            if (c == '"')
-            {
-                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
-                {
-                    current += '"';
-                    i++;
-                }
-                else
-                {
-                    inQuotes = !inQuotes;
-                }
-            }
-            else if (c == ',' && !inQuotes)
-            {
-                result.Add(current);
-                current = "";
-            }
-            else
-            {
-                current += c;
-            }
-        }
-
-        result.Add(current);
-        return result;
-    }
-
-    private static string Get(Dictionary<string, string> row, string key)
-    {
-        return row.TryGetValue(key, out string value) ? value : "";
-    }
-
-    private static float GetFloat(Dictionary<string, string> row, string key)
-    {
-        string value = Get(row, key);
-        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float result))
-        {
-            return result;
-        }
-        return 0f;
     }
 
     private class AgvMotionRow
